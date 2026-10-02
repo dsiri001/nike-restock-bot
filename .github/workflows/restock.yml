@@ -1,0 +1,44 @@
+name: Nike restock check
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"   # every 10 minutes (GitHub may delay runs a bit)
+  workflow_dispatch:          # lets you run it manually from the Actions tab
+    inputs:
+      test:
+        description: "Send a test notification instead of checking stock"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write             # needed to save state.json back to the repo
+
+concurrency:
+  group: restock-check
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: pip install requests
+
+      - name: Check stock
+        run: python check_once.py
+        env:
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          SIZES: ""            # empty = alert on ANY size; or e.g. "M,L"
+          TEST_MODE: ${{ inputs.test || 'false' }}
+
+      - name: Save state
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
+          git add state.json
+          git diff --cached --quiet || (git commit -m "Update stock state" && git push)
